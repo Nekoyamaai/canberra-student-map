@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Canberra Student Favourite Places</title>
+  <meta name="description" content="A shared map where students can recommend their favourite places around Canberra.">
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIINfQ3eR6Jx1lM8x3D1Vq1cH2l1uV5h4q8="
+        crossorigin="">
+  <style>
+    :root { --accent:#2563eb; --bg:#f7f8fb; --card:#fff; --text:#172033; --muted:#64748b; --border:#e2e8f0; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--text); background:var(--bg); }
+    header { background:#fff; border-bottom:1px solid var(--border); padding:22px 20px 16px; }
+    .wrap { max-width:1180px; margin:auto; }
+    h1 { margin:0; font-size:clamp(24px,4vw,38px); letter-spacing:-.03em; }
+    .subtitle { color:var(--muted); margin:7px 0 0; }
+    main { max-width:1180px; margin:18px auto; padding:0 20px 30px; }
+    .layout { display:grid; grid-template-columns:minmax(0,1fr) 350px; gap:16px; }
+    .panel { background:var(--card); border:1px solid var(--border); border-radius:18px; overflow:hidden; }
+    #map { min-height:650px; width:100%; }
+    .side { padding:18px; }
+    .side h2 { margin:0 0 5px; font-size:18px; }
+    label { display:block; font-size:13px; font-weight:650; margin-top:13px; }
+    input, select, textarea, button { font:inherit; }
+    input, select, textarea { width:100%; margin-top:6px; border:1px solid #cbd5e1; border-radius:10px; padding:11px 12px; background:#fff; color:var(--text); }
+    textarea { min-height:92px; resize:vertical; }
+    button { border:0; border-radius:10px; padding:11px 14px; cursor:pointer; }
+    .primary { width:100%; margin-top:15px; background:var(--accent); color:#fff; font-weight:700; }
+    .primary:disabled { opacity:.55; cursor:not-allowed; }
+    .status { min-height:22px; margin-top:10px; font-size:13px; color:var(--muted); }
+    .toolbar { display:flex; gap:8px; padding:12px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+    .toolbar input { margin:0; flex:1; min-width:170px; }
+    .toolbar select { margin:0; width:auto; min-width:130px; }
+    .cards { margin-top:16px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    .place-card { background:#fff; border:1px solid var(--border); border-radius:14px; padding:14px; }
+    .place-card strong { display:block; }
+    .meta { color:var(--muted); font-size:12px; margin-top:4px; }
+    .reason { margin:9px 0 0; font-size:14px; line-height:1.45; }
+    .empty { color:var(--muted); padding:18px 0; }
+    footer { color:var(--muted); font-size:12px; text-align:center; padding:12px 0 30px; }
+    .leaflet-popup-content { line-height:1.45; }
+    .search-result { border:1px solid var(--border); border-radius:10px; padding:9px; margin-top:7px; cursor:pointer; background:#fff; font-size:13px; }
+    .search-result:hover { background:#f8fafc; }
+    .selected { background:#eff6ff; border-color:#93c5fd; }
+    @media (max-width:850px) {
+      .layout { grid-template-columns:1fr; }
+      #map { min-height:500px; }
+      .cards { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>📍 Canberra Student Favourite Places</h1>
+    <p class="subtitle">A shared map made by students. Find somewhere new, or add your own favourite place.</p>
+  </div>
+</header>
+
+<main>
+  <div class="layout">
+    <section class="panel">
+      <div class="toolbar">
+        <input id="filter" placeholder="Filter places by name or reason…">
+        <select id="categoryFilter">
+          <option value="">All categories</option>
+          <option>Cafe</option><option>Food</option><option>Nature</option>
+          <option>Study</option><option>Shopping</option><option>Entertainment</option><option>Other</option>
+        </select>
+      </div>
+      <div id="map"></div>
+    </section>
+
+    <aside class="panel side">
+      <h2>Add your favourite place</h2>
+      <div style="color:var(--muted);font-size:13px;">Search for a Canberra place, choose it, then add your recommendation.</div>
+
+      <label for="searchPlace">Search location</label>
+      <input id="searchPlace" placeholder="e.g. Braddon, ANU, Telstra Tower">
+      <button id="searchBtn" type="button" style="margin-top:8px;background:#e2e8f0;">Search</button>
+      <div id="results" aria-live="polite"></div>
+
+      <form id="form">
+        <input type="hidden" id="lat">
+        <input type="hidden" id="lng">
+        <input type="hidden" id="displayName">
+
+        <label for="name">Place name</label>
+        <input id="name" required maxlength="100" placeholder="e.g. Koko Amusement">
+
+        <label for="category">Category</label>
+        <select id="category">
+          <option>Cafe</option><option>Food</option><option>Nature</option>
+          <option>Study</option><option>Shopping</option><option>Entertainment</option><option>Other</option>
+        </select>
+
+        <label for="reason">Why do you like it?</label>
+        <textarea id="reason" maxlength="300" placeholder="Cheap food, great view, good for studying…"></textarea>
+
+        <label for="student">Your name (optional)</label>
+        <input id="student" maxlength="60" placeholder="e.g. Qingyan">
+
+        <button id="submit" class="primary" type="submit">Add to shared map</button>
+        <div id="status" class="status" aria-live="polite"></div>
+      </form>
+    </aside>
+  </div>
+
+  <section>
+    <div id="cards" class="cards"></div>
+  </section>
+</main>
+
+<footer>
+  Map data © OpenStreetMap contributors · Geocoding by Nominatim · Built for student community use
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+/*
+  SETUP:
+  1. Create a Supabase project.
+  2. Run supabase.sql in Supabase SQL Editor.
+  3. Paste your Project URL and anon/publishable key below.
+*/
+const SUPABASE_URL = "https://nvujaspobphlerikouyj.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_EA0qXmeQzGvhLq0uCDzWog_HkRuRfIF";
+
+const isConfigured = !SUPABASE_URL.startsWith("PASTE_") && !SUPABASE_ANON_KEY.startsWith("PASTE_");
+const db = isConfigured ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+const categoryEmoji = {
+  Cafe:"☕", Food:"🍜", Nature:"🌿", Study:"📚",
+  Shopping:"🛍️", Entertainment:"🎬", Other:"📍"
+};
+
+const map = L.map("map").setView([-35.2809, 149.1300], 12);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+const markerLayer = L.layerGroup().addTo(map);
+let places = [];
+
+const $ = id => document.getElementById(id);
+const escapeHtml = s => String(s ?? "").replace(/[&<>"']/g, c => ({
+  "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+}[c]));
+
+function setStatus(message, error=false) {
+  $("status").textContent = message;
+  $("status").style.color = error ? "#b91c1c" : "var(--muted)";
+}
+
+function render() {
+  markerLayer.clearLayers();
+  const q = $("filter").value.trim().toLowerCase();
+  const cat = $("categoryFilter").value;
+
+  const visible = places.filter(p => {
+    const text = `${p.name} ${p.reason || ""} ${p.category || ""}`.toLowerCase();
+    return (!q || text.includes(q)) && (!cat || p.category === cat);
+  });
+
+  visible.forEach(p => {
+    const marker = L.marker([p.lat, p.lng]).addTo(markerLayer);
+    marker.bindPopup(`
+      <strong>${categoryEmoji[p.category] || "📍"} ${escapeHtml(p.name)}</strong>
+      <div>${escapeHtml(p.category)}</div>
+      ${p.reason ? `<p>${escapeHtml(p.reason)}</p>` : ""}
+      ${p.student_name ? `<small>Recommended by ${escapeHtml(p.student_name)}</small>` : ""}
+    `);
+  });
+
+  $("cards").innerHTML = visible.length
+    ? visible.map(p => `
+      <article class="place-card">
+        <strong>${categoryEmoji[p.category] || "📍"} ${escapeHtml(p.name)}</strong>
+        <div class="meta">${escapeHtml(p.category)}${p.student_name ? ` · ${escapeHtml(p.student_name)}` : ""}</div>
+        ${p.reason ? `<p class="reason">${escapeHtml(p.reason)}</p>` : ""}
+      </article>`).join("")
+    : `<div class="empty">No places match your filters yet.</div>`;
+}
+
+async function loadPlaces() {
+  if (!db) {
+    setStatus("Demo mode: add your Supabase URL and anon key in index.html to enable the shared database.");
+    return;
+  }
+  setStatus("Loading shared places…");
+  const { data, error } = await db
+    .from("student_places")
+    .select("id,name,category,reason,student_name,lat,lng,created_at")
+    .order("created_at", { ascending:false });
+
+  if (error) {
+    setStatus("Could not load the shared map: " + error.message, true);
+    return;
+  }
+  places = data || [];
+  render();
+  setStatus(`${places.length} shared place${places.length === 1 ? "" : "s"} loaded.`);
+}
+
+async function searchNominatim() {
+  const q = $("searchPlace").value.trim();
+  if (!q) return;
+  $("results").innerHTML = "<div class='meta' style='margin-top:8px;'>Searching…</div>";
+
+  const url = "https://nominatim.openstreetmap.org/search?" + new URLSearchParams({
+    q: q + ", Canberra, ACT, Australia",
+    format:"jsonv2",
+    limit:"5",
+    addressdetails:"1",
+    viewbox:"148.95,-35.15,149.30,-35.45",
+    bounded:"0"
+  });
+
+  try {
+    const res = await fetch(url, {headers:{Accept:"application/json"}});
+    if (!res.ok) throw new Error("Search service unavailable");
+    const data = await res.json();
+    $("results").innerHTML = data.length
+      ? data.map((x,i)=>`<div class="search-result" data-i="${i}">${escapeHtml(x.display_name)}</div>`).join("")
+      : "<div class='meta' style='margin-top:8px;'>No results found.</div>";
+
+    document.querySelectorAll(".search-result").forEach(el => {
+      el.addEventListener("click", () => {
+        const x = data[Number(el.dataset.i)];
+        $("lat").value = x.lat;
+        $("lng").value = x.lon;
+        $("displayName").value = x.display_name;
+        $("name").value = x.name || x.display_name.split(",")[0];
+        document.querySelectorAll(".search-result").forEach(e=>e.classList.remove("selected"));
+        el.classList.add("selected");
+        map.setView([Number(x.lat), Number(x.lon)], 16);
+      });
+    });
+  } catch (e) {
+    $("results").textContent = e.message;
+  }
+}
+
+$("searchBtn").addEventListener("click", searchNominatim);
+$("searchPlace").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); searchNominatim(); }});
+$("filter").addEventListener("input", render);
+$("categoryFilter").addEventListener("change", render);
+
+$("form").addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!db) {
+    setStatus("Connect Supabase first. The form is not publishing publicly yet.", true);
+    return;
+  }
+  const lat = Number($("lat").value), lng = Number($("lng").value);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    setStatus("Please search for a place and select a search result first.", true);
+    return;
+  }
+
+  $("submit").disabled = true;
+  setStatus("Adding your place…");
+
+  const payload = {
+    name: $("name").value.trim(),
+    category: $("category").value,
+    reason: $("reason").value.trim(),
+    student_name: $("student").value.trim() || null,
+    lat, lng
+  };
+
+  const { error } = await db.from("student_places").insert(payload);
+  $("submit").disabled = false;
+
+  if (error) {
+    setStatus("Could not add the place: " + error.message, true);
+    return;
+  }
+
+  e.target.reset();
+  $("lat").value = "";
+  $("lng").value = "";
+  $("displayName").value = "";
+  $("results").innerHTML = "";
+  setStatus("Added! Everyone using the shared map can now see it.");
+  await loadPlaces();
+});
+
+if (db) {
+  loadPlaces();
+
+  db.channel("student-places-live")
+    .on("postgres_changes", {event:"INSERT", schema:"public", table:"student_places"}, payload => {
+      if (!places.some(p => p.id === payload.new.id)) {
+        places.unshift(payload.new);
+        render();
+      }
+    })
+    .subscribe();
+} else {
+  render();
+}
+</script>
+</body>
+</html>
